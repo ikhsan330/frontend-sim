@@ -1,0 +1,30 @@
+@import './base.css';
+
+#app {
+  /* UBAH DARI SINI: Agar full screen */
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  font-weight: normal;
+  display: block; /* Pastikan blok biasa, bukan grid aneh bawaan */
+}
+
+a,
+.green {
+  text-decoration: none;
+  color: hsla(160, 100%, 37%, 1);
+  transition: 0.4s;
+}
+
+@media (hover: hover) {
+  a:hover {
+    background-color: hsla(160, 100%, 37%, 0.2);
+  }
+}
+
+/* PENTING:
+   Saya SUDAH MENGHAPUS bagian @media (min-width: 1024px)
+   yang berisi "body { display: flex }" dan "#app { display: grid }".
+   Itulah biang kerok yang membuat tampilan Anda jadi kecil di tengah.
+*/

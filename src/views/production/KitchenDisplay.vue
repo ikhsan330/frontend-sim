@@ -1,6 +1,30 @@
 <template>
   <div class="kitchen-layout">
 
+    <transition name="slide-fade">
+      <div v-if="notification.show" :class="['alert-floating', 'alert-' + notification.type]">
+        <div class="alert-content">
+          <span class="alert-icon">
+            {{ notification.type === 'success' ? '✅' : (notification.type === 'danger' ? '⛔' : '⚠️') }}
+          </span>
+          <span class="alert-msg">{{ notification.message }}</span>
+        </div>
+        <button @click="notification.show = false" class="alert-close">×</button>
+      </div>
+    </transition>
+
+    <div v-if="dialog.show" class="modal-overlay dialog-overlay">
+      <div class="modal-content dialog-content">
+        <h3>{{ dialog.title }}</h3>
+        <p>{{ dialog.message }}</p>
+        <div class="modal-actions">
+          <button @click="handleDialogCancel" class="btn-cancel">Batal</button>
+          <button @click="handleDialogConfirm" :class="dialog.type === 'danger' ? 'btn-danger' : 'btn-save'">
+            {{ dialog.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
     <header class="kitchen-header">
       <div class="brand">
         <h1>👨‍🍳 Kitchen Queue</h1>
@@ -11,7 +35,6 @@
       </div>
       <div class="actions">
         <button @click="fetchQueue" class="btn-refresh">🔄 Refresh</button>
-        <button @click="handleLogout" class="btn-logout">Logout</button>
       </div>
     </header>
 
@@ -65,12 +88,37 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
-import { useAuthStore } from '../../stores/auth';
-import { useRouter } from 'vue-router';
 import apiClient from '../../api/axios';
 
-const authStore = useAuthStore();
-const router = useRouter();
+
+
+// --- STATE ALERT & DIALOG ---
+const notification = ref({ show: false, type: 'success', message: '' });
+const dialog = ref({ show: false, title: '', message: '', type: 'confirm', confirmText: 'Ya', resolve: null });
+
+// Helper: Alert
+const triggerAlert = (message, type = 'success') => {
+  notification.value = { show: true, type, message };
+  setTimeout(() => { notification.value.show = false; }, 3000);
+};
+
+// Helper: Dialog
+const useDialog = (title, message, type = 'danger', confirmText = 'Ya') => {
+  return new Promise((resolve) => {
+    dialog.value = { show: true, title, message, type, confirmText, resolve };
+  });
+};
+
+const handleDialogConfirm = () => {
+  dialog.value.show = false;
+  if (dialog.value.resolve) dialog.value.resolve(true);
+};
+
+const handleDialogCancel = () => {
+  dialog.value.show = false;
+  if (dialog.value.resolve) dialog.value.resolve(false);
+};
+// ----------------------------
 
 const tasks = ref({});
 const date = ref('');
@@ -84,6 +132,7 @@ const fetchQueue = async () => {
     date.value = res.data.date;
   } catch (err) {
     console.error("Gagal load antrian:", err);
+    // Tidak perlu alert error di sini agar tidak mengganggu auto-refresh
   }
 };
 
@@ -94,27 +143,30 @@ const advanceStatus = async (order) => {
   if (order.status === 'pending') {
     nextStatus = 'cooking'; // Masak
   } else if (order.status === 'cooking') {
-    if(!confirm(`Selesaikan pesanan ${order.customer}?`)) return;
+    // GANTI CONFIRM BAWAAN
+    const confirmed = await useDialog(
+      'Pesanan Selesai?',
+      `Selesaikan pesanan untuk ${order.customer}?`,
+      'danger',
+      'Selesai Masak'
+    );
+
+    if (!confirmed) return;
     nextStatus = 'completed'; // Selesai
   }
 
   try {
-    // Panggil API Update Status
     await apiClient.put(`/production/orders/${order.id}/status`, {
-        status: nextStatus
+      status: nextStatus
     });
 
-    // Refresh otomatis
+    // Alert Sukses
+    if (nextStatus === 'cooking') triggerAlert(`Mulai memasak untuk ${order.customer}`, 'warning');
+    else triggerAlert(`Pesanan ${order.customer} selesai!`, 'success');
+
     fetchQueue();
   } catch (err) {
-    alert("Gagal update status: " + err.message);
-  }
-};
-
-const handleLogout = async () => {
-  if (confirm('Keluar dari dapur?')) {
-    await authStore.logout();
-    router.push('/login');
+    triggerAlert("Gagal update status: " + err.message, 'danger');
   }
 };
 
@@ -130,10 +182,56 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* TEMA GELAP */
+/* =========================================
+   STYLE ALERT & DIALOG (DARK THEME)
+   ========================================= */
+.alert-floating {
+  position: fixed; top: 30px; left: 50%; transform: translateX(-50%);
+  z-index: 99999;
+  display: flex; align-items: center; gap: 15px;
+  padding: 12px 25px; border-radius: 50px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); min-width: 320px;
+  animation: slideDown 0.4s ease-out;
+  color: #1e293b;
+  font-weight: 600;
+}
+.alert-content { flex: 1; display: flex; align-items: center; gap: 10px; }
+.alert-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; opacity: 0.6; color: inherit; }
+.alert-success { background-color: #d1fae5; border: 2px solid #10b981; color: #065f46; }
+.alert-danger { background-color: #fee2e2; border: 2px solid #ef4444; color: #991b1b; }
+.alert-warning { background-color: #fef3c7; border: 2px solid #f59e0b; color: #92400e; }
+
+@keyframes slideDown {
+  from { transform: translateX(-50%) translateY(-30px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* DIALOG (DARK) */
+.dialog-overlay { z-index: 10000; }
+.dialog-content {
+  background: #1e293b !important; /* Dark BG */
+  color: #f8fafc;
+  border: 1px solid #334155 !important;
+  text-align: left !important;
+  width: 380px !important;
+}
+.dialog-content h3 { margin-top: 0; color: #f8fafc; margin-bottom: 10px; }
+.dialog-content p { color: #cbd5e1; margin-bottom: 20px; }
+
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.btn-cancel { padding: 10px 20px; background: transparent; border: 1px solid #475569; color: #cbd5e1; border-radius: 6px; cursor: pointer; }
+.btn-save { padding: 10px 20px; background: #10b981; border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: bold; }
+.btn-danger { padding: 10px 20px; background: #ef4444; border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: bold; }
+
+/* MODAL OVERLAY (GLOBAL) */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
+.modal-content { background: #1e293b; padding: 30px; border-radius: 12px; width: 420px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+
+/* =========================================
+   STYLE DAPUR ASLI
+   ========================================= */
 .kitchen-layout { min-height: 100vh; background-color: #1e293b; color: #f8fafc; font-family: 'Segoe UI', sans-serif; }
 
-/* HEADER */
 .kitchen-header {
   display: flex; justify-content: space-between; align-items: center;
   padding: 20px 30px; background-color: #0f172a; border-bottom: 1px solid #334155;
@@ -145,7 +243,6 @@ onUnmounted(() => {
 
 .actions { display: flex; gap: 10px; }
 .btn-refresh { padding: 8px 15px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-.btn-logout { padding: 8px 15px; background: #334155; color: #cbd5e1; border: 1px solid #475569; border-radius: 6px; cursor: pointer; }
 
 /* CONTENT */
 .kitchen-board { padding: 30px; }
@@ -167,65 +264,33 @@ onUnmounted(() => {
 }
 .menu-title { margin: 0; font-size: 1.2rem; color: #c2410c; font-weight: 800; }
 
-.qty-badge {
-  background: #f97316; color: white; padding: 5px 12px; border-radius: 8px; text-align: center;
-}
+.qty-badge { background: #f97316; color: white; padding: 5px 12px; border-radius: 8px; text-align: center; }
 .qty-num { display: block; font-size: 1.4rem; font-weight: 800; line-height: 1; }
 .qty-label { font-size: 0.7rem; text-transform: uppercase; font-weight: 600; }
 
 .card-body { padding: 15px; flex: 1; }
 .tags { display: flex; flex-direction: column; gap: 8px; }
 
-/* TOMBOL INTERAKTIF (MODIFIKASI UTAMA) */
 .tag-btn {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px;
   cursor: pointer; transition: 0.2s; width: 100%; text-align: left;
 }
+.status-icon { font-size: 1.5rem; }
+.btn-text { display: flex; flex-direction: column; }
+.cust-name { font-weight: 800; font-size: 1rem; color: #1e293b; }
+.inv-no { font-size: 0.75rem; color: #64748b; font-family: monospace; }
 
-.status-icon {
-  font-size: 1.5rem;
-}
+.tag-btn.pending { background: #f8fafc; border-color: #cbd5e1; }
+.tag-btn.pending:hover { background: #fffbeb; border-color: #f59e0b; }
 
-.btn-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.cust-name {
-  font-weight: 800;
-  font-size: 1rem;
-  color: #1e293b;
-}
-
-.inv-no {
-  font-size: 0.75rem;
-  color: #64748b;
-  font-family: monospace;
-}
-
-/* Warna Status Pending */
-.tag-btn.pending {
-  background: #f8fafc; border-color: #cbd5e1;
-}
-.tag-btn.pending:hover {
-  background: #fffbeb; border-color: #f59e0b;
-}
-
-/* Warna Status Cooking */
 .tag-btn.cooking {
   background: #eff6ff; border-color: #3b82f6;
   box-shadow: 0 0 8px rgba(59, 130, 246, 0.2);
   animation: pulse-border 2s infinite;
 }
-.tag-btn.cooking .cust-name {
-  color: #2563eb;
-}
+.tag-btn.cooking .cust-name { color: #2563eb; }
 
-@keyframes pulse {
-  0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; }
-}
-@keyframes pulse-border {
-  0% { border-color: #3b82f6; } 50% { border-color: #93c5fd; } 100% { border-color: #3b82f6; }
-}
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+@keyframes pulse-border { 0% { border-color: #3b82f6; } 50% { border-color: #93c5fd; } 100% { border-color: #3b82f6; } }
 </style>

@@ -1,7 +1,6 @@
 import axios from 'axios';
 
 // 1. Set Base URL Flask Anda
-// Pastikan port 5000 sesuai dengan backend Flask Anda
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
   headers: {
@@ -10,7 +9,6 @@ const apiClient = axios.create({
 });
 
 // 2. Interceptor Request (Penyisip Token Otomatis)
-// Setiap kali kita request ke backend, kode ini akan cek apakah ada token
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
   if (token) {

@@ -4,10 +4,10 @@
     <div class="sidebar-header">
       <div class="brand-wrapper">
         <div class="brand-full" v-if="!isCollapsed">
-          SIM<span class="highlight">POS</span>
+          UMKM<span class="highlight">KULINER</span>
         </div>
         <div class="brand-mini" v-else>
-          S<span class="highlight">P</span>
+          U<span class="highlight">K</span>
         </div>
       </div>
     </div>

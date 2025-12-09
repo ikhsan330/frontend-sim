@@ -1,6 +1,30 @@
 <template>
   <div class="stock-layout">
 
+    <transition name="slide-fade">
+      <div v-if="notification.show" :class="['alert-floating', 'alert-' + notification.type]">
+        <div class="alert-content">
+          <span class="alert-icon">
+            {{ notification.type === 'success' ? '✅' : (notification.type === 'danger' ? '⛔' : '⚠️') }}
+          </span>
+          <span class="alert-msg">{{ notification.message }}</span>
+        </div>
+        <button @click="notification.show = false" class="alert-close">×</button>
+      </div>
+    </transition>
+
+    <div v-if="dialog.show" class="modal-overlay dialog-overlay">
+      <div class="modal-content dialog-content">
+        <h3>{{ dialog.title }}</h3>
+        <p>{{ dialog.message }}</p>
+        <div class="modal-actions">
+          <button @click="handleDialogCancel" class="btn-cancel">Batal</button>
+          <button @click="handleDialogConfirm" :class="dialog.type === 'danger' ? 'btn-danger' : 'btn-save'">
+            {{ dialog.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
     <header class="stock-header">
       <div class="brand">
         <h1>📦 Manajemen Stok</h1>
@@ -193,6 +217,34 @@
 import { ref, onMounted } from 'vue';
 import apiClient from '../../api/axios';
 
+// --- STATE ALERT & DIALOG ---
+const notification = ref({ show: false, type: 'success', message: '' });
+const dialog = ref({ show: false, title: '', message: '', type: 'confirm', confirmText: 'Ya', resolve: null });
+
+// Helper: Trigger Alert (Toast)
+const triggerAlert = (message, type = 'success') => {
+  notification.value = { show: true, type, message };
+  setTimeout(() => { notification.value.show = false; }, 3000);
+};
+
+// Helper: Use Dialog (Promise based)
+const useDialog = (title, message, type = 'confirm', confirmText = 'Ya') => {
+  return new Promise((resolve) => {
+    dialog.value = { show: true, title, message, type, confirmText, resolve };
+  });
+};
+
+const handleDialogConfirm = () => {
+  dialog.value.show = false;
+  if (dialog.value.resolve) dialog.value.resolve(true);
+};
+
+const handleDialogCancel = () => {
+  dialog.value.show = false;
+  if (dialog.value.resolve) dialog.value.resolve(false);
+};
+// ----------------------------
+
 const stocks = ref([]);
 const searchQuery = ref('');
 const isLoading = ref(false);
@@ -211,44 +263,30 @@ const fetchStocks = async () => {
   isLoading.value = true;
   try {
     const res = await apiClient.get(`/production/stocks?q=${searchQuery.value}`);
-
-    // [PERBAIKAN]
-    // Karena backend mengirim format { data: [...], count: ... }
-    // Maka kita harus ambil res.data.data
     stocks.value = res.data.data || [];
-
   } catch (err) {
     console.error(err);
     if(err.response && err.response.status === 403) {
-      alert("Akses Ditolak: Akun Anda tidak memiliki izin dapur.");
+      triggerAlert("Akses Ditolak: Anda tidak memiliki izin dapur.", 'danger');
     }
   } finally {
     isLoading.value = false;
   }
 };
 
-// --- LOGIC RESTOCK (UPDATED) ---
+// --- LOGIC RESTOCK ---
 const openRestock = (item) => {
   selectedItem.value = item;
-  // Default pilih satuan beli (misal: Karung) jika ada rasio > 1
   const hasConversion = item.conversion_rate && item.conversion_rate > 1;
-
-  restockForm.value = {
-    qty: '',
-    total_cost: '',
-    use_purchase_unit: hasConversion
-  };
+  restockForm.value = { qty: '', total_cost: '', use_purchase_unit: hasConversion };
   showRestockModal.value = true;
 };
 
-// Hitung HPP Real-time (Untuk Preview)
 const calculateHPP = () => {
   const qtyInput = restockForm.value.qty;
   const cost = restockForm.value.total_cost;
   if(!qtyInput || !cost) return 0;
-
   let finalQty = qtyInput;
-  // Jika pakai satuan beli, kalikan rasio
   if (restockForm.value.use_purchase_unit) {
     finalQty = qtyInput * selectedItem.value.conversion_rate;
   }
@@ -258,27 +296,23 @@ const calculateHPP = () => {
 const submitRestock = async () => {
   try {
     let finalQty = restockForm.value.qty;
-
-    // KONVERSI OTOMATIS: Karung -> Gram
     if (restockForm.value.use_purchase_unit) {
       finalQty = finalQty * selectedItem.value.conversion_rate;
     }
-
-    // Hitung harga per unit dasar (HPP)
     const pricePerUnit = restockForm.value.total_cost / finalQty;
 
-    // Kirim ke endpoint produksi
     await apiClient.post('/production/restock', {
       ingredient_id: selectedItem.value.id,
-      qty: finalQty, // Kirim yang sudah dikonversi (Gram)
+      qty: finalQty,
       price: pricePerUnit
     });
 
-    alert(`Berhasil! Stok bertambah ${formatNumber(finalQty)} ${selectedItem.value.unit}`);
+    // Alert Sukses
+    triggerAlert(`Stok bertambah ${formatNumber(finalQty)} ${selectedItem.value.unit}`, 'success');
     closeModal();
     fetchStocks();
   } catch (err) {
-    alert(err.response?.data?.message || 'Gagal restock');
+    triggerAlert(err.response?.data?.message || 'Gagal restock', 'danger');
   }
 };
 
@@ -290,6 +324,10 @@ const openOpname = (item) => {
 };
 
 const submitOpname = async () => {
+  // Gunakan Custom Dialog
+  const confirmed = await useDialog('Konfirmasi Opname', 'Apakah selisih stok sudah benar?', 'danger', 'Sesuaikan');
+  if (!confirmed) return;
+
   try {
     await apiClient.post('/production/adjustment', {
       ingredient_id: selectedItem.value.id,
@@ -297,11 +335,11 @@ const submitOpname = async () => {
       reason: opnameForm.value.reason
     });
 
-    alert('Stok berhasil disesuaikan!');
+    triggerAlert('Stok berhasil disesuaikan!', 'success');
     closeModal();
     fetchStocks();
   } catch (err) {
-    alert(err.response?.data?.message || 'Gagal opname');
+    triggerAlert(err.response?.data?.message || 'Gagal opname', 'danger');
   }
 };
 
@@ -334,7 +372,45 @@ onMounted(fetchStocks);
 </script>
 
 <style scoped>
-/* DARK THEME STYLING */
+/* =========================================
+   STYLE ALERT & DIALOG (DARK THEME)
+   ========================================= */
+.alert-floating {
+  position: fixed; top: 30px; left: 50%; transform: translateX(-50%);
+  z-index: 99999;
+  display: flex; align-items: center; gap: 15px;
+  padding: 12px 25px; border-radius: 50px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); min-width: 320px;
+  animation: slideDown 0.4s ease-out;
+  color: #1e293b; /* Text tetap gelap di alert cerah */
+  font-weight: 600;
+}
+.alert-content { flex: 1; display: flex; align-items: center; gap: 10px; }
+.alert-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; opacity: 0.6; color: inherit; }
+.alert-success { background-color: #d1fae5; border: 2px solid #10b981; color: #065f46; }
+.alert-danger { background-color: #fee2e2; border: 2px solid #ef4444; color: #991b1b; }
+.alert-warning { background-color: #fef3c7; border: 2px solid #f59e0b; color: #92400e; }
+
+@keyframes slideDown {
+  from { transform: translateX(-50%) translateY(-30px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* DIALOG STYLING (DARK) */
+.dialog-overlay { z-index: 10000; }
+.dialog-content {
+  background: #1e293b !important; /* Dark BG */
+  color: #f8fafc;
+  border: 1px solid #334155 !important;
+  text-align: left !important;
+  width: 380px !important;
+}
+.dialog-content h3 { margin-top: 0; color: #f8fafc; }
+.dialog-content p { color: #cbd5e1; }
+
+/* =========================================
+   STYLE BAWAAN STOK (DARK)
+   ========================================= */
 .stock-layout {
   min-height: 100vh;
   background-color: #1e293b;
@@ -404,7 +480,6 @@ onMounted(fetchStocks);
 .hint { font-size: 0.8rem; color: #10b981; margin-top: 5px; display: block; }
 .hint-danger { font-size: 0.8rem; color: #f59e0b; margin-top: 5px; display: block; }
 
-/* Toggle Unit Style */
 .toggle-unit { display: flex; gap: 15px; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; }
 .radio-label { display: flex; align-items: center; cursor: pointer; color: #cbd5e1; font-size: 0.9rem; flex: 1; }
 .radio-label input { margin-right: 8px; width: 16px; height: 16px; accent-color: #3b82f6; }

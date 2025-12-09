@@ -1,5 +1,30 @@
 <template>
   <div class="page-container">
+
+    <transition name="slide-fade">
+      <div v-if="notification.show" :class="['alert-floating', 'alert-' + notification.type]">
+        <div class="alert-content">
+          <span class="alert-icon">
+            {{ notification.type === 'success' ? '✅' : (notification.type === 'danger' ? '⛔' : '⚠️') }}
+          </span>
+          <span class="alert-msg">{{ notification.message }}</span>
+        </div>
+        <button @click="notification.show = false" class="alert-close">×</button>
+      </div>
+    </transition>
+
+    <div v-if="dialog.show" class="modal-overlay dialog-overlay">
+      <div class="modal-content dialog-content">
+        <h3>{{ dialog.title }}</h3>
+        <p>{{ dialog.message }}</p>
+        <div class="modal-actions">
+          <button @click="handleDialogCancel" class="btn-cancel">Batal</button>
+          <button @click="handleDialogConfirm" :class="dialog.type === 'danger' ? 'btn-danger' : 'btn-save'">
+            {{ dialog.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="header">
       <div>
         <h1>📦 Master Bahan Baku (Gudang)</h1>
@@ -100,7 +125,35 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import apiClient from '../../api/axios';
+import apiClient from '../../api/axios'; // Path disesuaikan
+
+// --- STATE ALERT & DIALOG ---
+const notification = ref({ show: false, type: 'success', message: '' });
+const dialog = ref({ show: false, title: '', message: '', type: 'confirm', confirmText: 'Ya', resolve: null });
+
+// Helper: Alert
+const triggerAlert = (message, type = 'success') => {
+  notification.value = { show: true, type, message };
+  setTimeout(() => { notification.value.show = false; }, 3000);
+};
+
+// Helper: Dialog
+const useDialog = (title, message, type = 'danger', confirmText = 'Ya') => {
+  return new Promise((resolve) => {
+    dialog.value = { show: true, title, message, type, confirmText, resolve };
+  });
+};
+
+const handleDialogConfirm = () => {
+  dialog.value.show = false;
+  if (dialog.value.resolve) dialog.value.resolve(true);
+};
+
+const handleDialogCancel = () => {
+  dialog.value.show = false;
+  if (dialog.value.resolve) dialog.value.resolve(false);
+};
+// ----------------------------
 
 const ingredients = ref([]);
 const showModal = ref(false);
@@ -128,24 +181,36 @@ const saveIngredient = async () => {
   try {
     if (isEditing.value) {
       await apiClient.put(`/admin/ingredients/${form.value.id}`, form.value);
+      triggerAlert('Data bahan baku diperbarui!', 'success');
     } else {
       await apiClient.post('/admin/ingredients', form.value);
+      triggerAlert('Bahan baku baru ditambahkan!', 'success');
     }
     showModal.value = false;
     fetchIngredients();
   } catch (err) {
-    alert(err.response?.data?.message || 'Gagal menyimpan');
+    triggerAlert(err.response?.data?.message || 'Gagal menyimpan', 'danger');
   }
 };
 
 // DELETE DATA
 const deleteIngredient = async (id) => {
-  if (!confirm('Hapus bahan ini?')) return;
+  // Ganti confirm bawaan
+  const confirmed = await useDialog(
+    'Hapus Bahan?',
+    'Data stok bahan ini akan hilang selamanya.',
+    'danger',
+    'Hapus'
+  );
+
+  if (!confirmed) return;
+
   try {
     await apiClient.delete(`/admin/ingredients/${id}`);
+    triggerAlert('Bahan baku berhasil dihapus.', 'success');
     fetchIngredients();
   } catch (err) {
-    alert(err.response?.data?.message || 'Gagal menghapus');
+    triggerAlert(err.response?.data?.message || 'Gagal menghapus', 'danger');
   }
 };
 
@@ -168,6 +233,46 @@ onMounted(fetchIngredients);
 </script>
 
 <style scoped>
+/* =========================================
+   STYLE ALERT & DIALOG
+   ========================================= */
+.alert-floating {
+  position: fixed; top: 30px; left: 50%; transform: translateX(-50%);
+  z-index: 11000;
+  display: flex; align-items: center; gap: 15px;
+  padding: 12px 25px; border-radius: 50px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15); min-width: 320px;
+  animation: slideDown 0.4s ease-out;
+  background: white; font-weight: 600; font-size: 0.95rem; color: #333;
+}
+.alert-content { flex: 1; display: flex; align-items: center; gap: 10px; }
+.alert-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; opacity: 0.6; }
+.alert-success { border: 2px solid #10b981; color: #065f46; background: #ecfdf5; }
+.alert-danger { border: 2px solid #ef4444; color: #991b1b; background: #fef2f2; }
+
+@keyframes slideDown {
+  from { transform: translateX(-50%) translateY(-30px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* DIALOG MODAL */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.5); z-index: 10000;
+  display: flex; justify-content: center; align-items: center;
+  backdrop-filter: blur(2px);
+}
+.modal-content {
+  background: white; padding: 25px; border-radius: 12px; width: 450px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+}
+.dialog-content { text-align: center; width: 350px; }
+.dialog-content h3 { margin-top: 0; color: #1e293b; margin-bottom: 10px; }
+.dialog-content p { color: #64748b; margin-bottom: 20px; }
+
+/* =========================================
+   STYLE INGREDIENT PAGE
+   ========================================= */
 .page-container { padding: 20px; font-family: 'Segoe UI', sans-serif; color: #2c3e50; }
 .header { display: flex; justify-content: space-between; margin-bottom: 25px; align-items: flex-start; }
 .header h1 { margin: 0; font-size: 1.8rem; }
@@ -181,29 +286,21 @@ th { background: #f8fafc; font-weight: 600; color: #64748b; font-size: 0.9rem; }
 .text-small { font-size: 0.85rem; color: #64748b; }
 .text-danger { color: #ef4444; font-weight: bold; }
 
-/* Badges */
 .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
 .badge.blue { background: #e0f2fe; color: #0284c7; }
 .badge.green { background: #dcfce7; color: #16a34a; }
 
-/* Buttons */
-button { cursor: pointer; border: none; border-radius: 6px; font-weight: 600; transition: 0.2s; }
-.btn-add { background: #3b82f6; color: white; padding: 10px 20px; }
-.btn-add:hover { background: #2563eb; }
-.btn-edit { background: #f59e0b; color: white; padding: 6px 10px; margin-right: 5px; }
-.btn-delete { background: #ef4444; color: white; padding: 6px 10px; }
+.btn-add { background: #3b82f6; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.btn-edit { background: #f59e0b; color: white; padding: 6px 10px; border: none; border-radius: 6px; cursor: pointer; margin-right: 5px; }
+.btn-delete { background: #ef4444; color: white; padding: 6px 10px; border: none; border-radius: 6px; cursor: pointer; }
 
-/* MODAL & FORM STYLING */
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; backdrop-filter: blur(2px); }
-.modal-content { background: white; padding: 30px; border-radius: 12px; width: 450px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
-.modal-content h3 { margin-top: 0; margin-bottom: 20px; color: #1e293b; }
-
+/* Form Styles */
 .form-group { margin-bottom: 15px; }
 .form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; }
 .input-std { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 0.95rem; }
 .input-std:focus { outline: none; border-color: #3b82f6; ring: 2px solid #3b82f6; }
 
-/* Conversion Box Style */
+/* Conversion Box */
 .conversion-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
 .box-section label { font-size: 0.85rem; color: #64748b; display: block; margin-bottom: 5px; font-weight: 600; }
 .box-section small { font-size: 0.8rem; color: #94a3b8; display: block; margin-top: 5px; }
@@ -216,8 +313,7 @@ button { cursor: pointer; border: none; border-radius: 6px; font-weight: 600; tr
 .flex-1 { flex: 1; }
 
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px; }
-.btn-save { background: #22c55e; color: white; padding: 10px 20px; }
-.btn-save:hover { background: #16a34a; }
-.btn-cancel { background: #e2e8f0; color: #475569; padding: 10px 20px; }
-.btn-cancel:hover { background: #cbd5e1; }
+.btn-save { background: #10b981; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.btn-cancel { background: #f1f5f9; color: #475569; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.btn-danger { background: #ef4444; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
 </style>

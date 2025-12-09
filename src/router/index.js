@@ -120,7 +120,7 @@ router.beforeEach((to, from, next) => {
   else if (to.meta.requiresGuest && isAuthenticated) {
     if (userRole === 'admin') next('/admin/dashboard')
     else if (userRole === 'cashier') next('/cashier/pos')
-    else if (userRole === 'kitchen') next('/kitchen/orders')
+    else if (userRole === 'kitchen') next('/production/queue')
     else next('/')
   }
   // 3. (Opsional) Cek Role spesifik (misal Kasir coba masuk halaman Admin)

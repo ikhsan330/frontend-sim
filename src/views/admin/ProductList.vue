@@ -1,7 +1,35 @@
 <template>
   <div class="page-container">
+
+    <transition name="slide-fade">
+      <div v-if="notification.show" :class="['alert-floating', 'alert-' + notification.type]">
+        <div class="alert-content">
+          <span class="alert-icon">
+            {{ notification.type === 'success' ? '✅' : (notification.type === 'danger' ? '⛔' : '⚠️') }}
+          </span>
+          <span class="alert-msg">{{ notification.message }}</span>
+        </div>
+        <button @click="notification.show = false" class="alert-close">×</button>
+      </div>
+    </transition>
+
+    <div v-if="dialog.show" class="modal-overlay dialog-overlay">
+      <div class="modal-content dialog-content">
+        <h3>{{ dialog.title }}</h3>
+        <p>{{ dialog.message }}</p>
+        <div class="modal-actions">
+          <button @click="handleDialogCancel" class="btn-cancel">Batal</button>
+          <button @click="handleDialogConfirm" :class="dialog.type === 'danger' ? 'btn-danger' : 'btn-save'">
+            {{ dialog.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="header">
-      <h1>🍔 Master Produk (Menu)</h1>
+      <div>
+        <h1>🍔 Master Produk (Menu)</h1>
+        <p class="subtitle">Kelola menu makanan dan atur resep produksi</p>
+      </div>
       <button @click="openProductModal()" class="btn-add">+ Menu Baru</button>
     </div>
 
@@ -11,27 +39,32 @@
           <tr>
             <th>Menu</th>
             <th>Kategori</th>
-            <th>Harga</th>
+            <th>Harga Jual</th>
             <th>Status</th>
-            <th>Aksi / Resep</th>
+            <th class="text-right">Aksi & Resep</th>
           </tr>
         </thead>
         <tbody>
+          <tr v-if="products.length === 0">
+            <td colspan="5" class="text-center">Belum ada menu yang terdaftar.</td>
+          </tr>
           <tr v-for="prod in products" :key="prod.id">
             <td>
               <strong>{{ prod.name }}</strong>
             </td>
-            <td>{{ prod.category }}</td>
-            <td>Rp {{ formatPrice(prod.price) }}</td>
             <td>
-              <span :class="prod.is_active ? 'active' : 'inactive'">
+              <span class="badge gray">{{ prod.category }}</span>
+            </td>
+            <td>{{ formatRp(prod.price) }}</td>
+            <td>
+              <span :class="['badge', prod.is_active ? 'green' : 'red']">
                 {{ prod.is_active ? 'Aktif' : 'Non-Aktif' }}
               </span>
             </td>
-            <td>
-              <button @click="openRecipeModal(prod)" class="btn-recipe">🧪 Atur Resep</button>
-              <button @click="openProductModal(prod)" class="btn-edit">✏️</button>
-              <button @click="deleteProduct(prod.id)" class="btn-delete">🗑️</button>
+            <td class="text-right">
+              <button @click="openRecipeModal(prod)" class="btn-recipe" title="Atur Resep">🧪 Resep</button>
+              <button @click="openProductModal(prod)" class="btn-edit" title="Edit Menu">✏️</button>
+              <button @click="deleteProduct(prod.id)" class="btn-delete" title="Hapus Menu">🗑️</button>
             </td>
           </tr>
         </tbody>
@@ -44,11 +77,11 @@
         <form @submit.prevent="saveProduct">
           <div class="form-group">
             <label>Nama Menu</label>
-            <input v-model="form.name" required />
+            <input v-model="form.name" required placeholder="Contoh: Nasi Goreng Spesial" class="input-std" />
           </div>
           <div class="form-group">
             <label>Kategori</label>
-            <select v-model="form.category">
+            <select v-model="form.category" class="input-std">
               <option value="Food">Makanan</option>
               <option value="Drink">Minuman</option>
               <option value="Snack">Snack</option>
@@ -56,11 +89,11 @@
           </div>
           <div class="form-group">
             <label>Harga Jual (Rp)</label>
-            <input v-model="form.price" type="number" required />
+            <input v-model="form.price" type="number" required placeholder="0" class="input-std" />
           </div>
           <div class="form-group">
             <label>Status Jual</label>
-            <select v-model="form.is_active">
+            <select v-model="form.is_active" class="input-std">
               <option :value="true">Dijual (Aktif)</option>
               <option :value="false">Disembunyikan</option>
             </select>
@@ -75,26 +108,27 @@
 
     <div v-if="showRecipeModal" class="modal-overlay">
       <div class="modal-content large-modal">
-        <h3>🧪 Resep: {{ selectedProduct.name }}</h3>
+        <h3>🧪 Resep: <span class="highlight">{{ selectedProduct.name }}</span></h3>
+        <p class="modal-subtitle">Tentukan bahan baku yang berkurang setiap 1 porsi menu ini terjual.</p>
 
         <div class="recipe-list">
           <table class="mini-table">
             <thead>
               <tr>
-                <th>Bahan</th>
-                <th>Takaran</th>
-                <th>Hapus</th>
+                <th>Bahan Baku</th>
+                <th>Takaran Per Porsi</th>
+                <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="currentRecipes.length === 0">
-                <td colspan="3" class="text-center">Belum ada resep.</td>
+                <td colspan="3" class="text-center">Belum ada resep yang diatur.</td>
               </tr>
               <tr v-for="r in currentRecipes" :key="r.recipe_id">
                 <td>{{ r.ingredient_name }}</td>
-                <td>{{ r.quantity }} {{ r.unit }}</td>
+                <td><strong>{{ r.quantity }}</strong> {{ r.unit }}</td>
                 <td>
-                  <button @click="removeRecipeItem(r.recipe_id)" class="btn-small-danger">X</button>
+                  <button @click="removeRecipeItem(r.recipe_id)" class="btn-small-danger">Hapus</button>
                 </td>
               </tr>
             </tbody>
@@ -104,14 +138,15 @@
         <hr>
 
         <form @submit.prevent="addRecipeItem" class="add-recipe-form">
-          <label>Tambah Bahan:</label>
+          <label>Tambah Bahan Baru:</label>
           <div class="row">
-            <select v-model="recipeForm.ingredient_id" required>
-  <option disabled value="">Pilih Bahan...</option>
-  <option v-for="ing in allIngredients" :key="ing.id" :value="ing.id">
-    {{ ing.name }} (Satuan: {{ ing.unit }})  </option>
-</select>
-            <input v-model="recipeForm.quantity_needed" type="number" step="0.01" placeholder="Jml" required style="width: 80px;" />
+            <select v-model="recipeForm.ingredient_id" required class="input-std flex-2">
+              <option disabled value="">Pilih Bahan...</option>
+              <option v-for="ing in allIngredients" :key="ing.id" :value="ing.id">
+                {{ ing.name }} (Satuan: {{ ing.unit }})
+              </option>
+            </select>
+            <input v-model="recipeForm.quantity_needed" type="number" step="0.01" placeholder="Jml" required class="input-std flex-1" />
             <button type="submit" class="btn-add-small">+</button>
           </div>
         </form>
@@ -128,6 +163,34 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import apiClient from '../../api/axios';
+
+// --- STATE ALERT & DIALOG ---
+const notification = ref({ show: false, type: 'success', message: '' });
+const dialog = ref({ show: false, title: '', message: '', type: 'confirm', confirmText: 'Ya', resolve: null });
+
+// Helper: Alert
+const triggerAlert = (message, type = 'success') => {
+  notification.value = { show: true, type, message };
+  setTimeout(() => { notification.value.show = false; }, 3000);
+};
+
+// Helper: Dialog
+const useDialog = (title, message, type = 'danger', confirmText = 'Ya') => {
+  return new Promise((resolve) => {
+    dialog.value = { show: true, title, message, type, confirmText, resolve };
+  });
+};
+
+const handleDialogConfirm = () => {
+  dialog.value.show = false;
+  if (dialog.value.resolve) dialog.value.resolve(true);
+};
+
+const handleDialogCancel = () => {
+  dialog.value.show = false;
+  if (dialog.value.resolve) dialog.value.resolve(false);
+};
+// ----------------------------
 
 // STATE UTAMA
 const products = ref([]);
@@ -156,39 +219,46 @@ const saveProduct = async () => {
   try {
     if (isEditing.value) {
       await apiClient.put(`/admin/products/${form.value.id}`, form.value);
+      triggerAlert('Menu berhasil diperbarui!', 'success');
     } else {
       await apiClient.post('/admin/products', form.value);
+      triggerAlert('Menu baru berhasil dibuat!', 'success');
     }
     showProductModal.value = false;
     fetchProducts();
-  } catch (err) { console.error(err); alert('Gagal menyimpan produk'); }
+  } catch (err) { triggerAlert(err.response?.data?.message,'Gagal menyimpan produk', 'danger'); }
 };
 
 const deleteProduct = async (id) => {
-  if (!confirm('Hapus menu ini?')) return;
+  // Ganti Confirm Bawaan
+  const confirmed = await useDialog(
+    'Hapus Menu?',
+    'Menu ini akan dihapus permanen beserta pengaturan resepnya.',
+    'danger',
+    'Hapus'
+  );
+
+  if (!confirmed) return;
+
   try {
     await apiClient.delete(`/admin/products/${id}`);
+    triggerAlert('Menu berhasil dihapus.', 'success');
     fetchProducts();
-  } catch (err) { console.error(err); alert('Gagal menghapus'); }
+  } catch (err) { triggerAlert(err.response?.data?.message,'Gagal menghapus menu.', 'danger'); }
 };
 
 // 2. MANAJEMEN RESEP ========================
-// Ambil daftar semua bahan baku untuk dropdown
 const fetchAllIngredients = async () => {
   const res = await apiClient.get('/admin/ingredients');
   allIngredients.value = res.data;
 };
 
-// Buka Modal Resep & Ambil Resep Produk tsb
 const openRecipeModal = async (product) => {
   selectedProduct.value = product;
   showRecipeModal.value = true;
-  recipeForm.value = { ingredient_id: '', quantity_needed: '' }; // Reset form
+  recipeForm.value = { ingredient_id: '', quantity_needed: '' };
 
-  // Ambil data bahan (jika belum ada)
   if (allIngredients.value.length === 0) await fetchAllIngredients();
-
-  // Ambil resep eksisting
   refreshRecipeList(product.id);
 };
 
@@ -206,23 +276,28 @@ const addRecipeItem = async () => {
       ingredient_id: recipeForm.value.ingredient_id,
       quantity_needed: recipeForm.value.quantity_needed
     });
-    // Refresh tabel resep kecil
     refreshRecipeList(selectedProduct.value.id);
-    recipeForm.value.quantity_needed = ''; // Reset jumlah
+    recipeForm.value.quantity_needed = '';
+    triggerAlert('Bahan resep ditambahkan', 'success');
   } catch (err) {
-    alert(err.response?.data?.message || 'Gagal menambah resep');
+    triggerAlert(err.response?.data?.message || 'Gagal menambah resep', 'danger');
   }
 };
 
 const removeRecipeItem = async (recipeId) => {
-  if(!confirm('Hapus bahan ini dari resep?')) return;
+  // Dialog konfirmasi kecil tidak perlu full modal, cukup confirm jika diinginkan
+  // Tapi untuk konsistensi, pakai useDialog
+  const confirmed = await useDialog('Hapus Bahan?', 'Bahan ini akan dihapus dari resep menu ini.', 'danger', 'Hapus');
+  if(!confirmed) return;
+
   try {
     await apiClient.delete(`/admin/recipes/${recipeId}`);
     refreshRecipeList(selectedProduct.value.id);
-  } catch (err) { console.error(err); alert('Gagal hapus item'); }
+    triggerAlert('Item resep dihapus', 'success');
+  } catch (err) { triggerAlert(err.response?.data?.message,'Gagal hapus item', 'danger'); }
 };
 
-// HELPER MODAL PRODUK
+// HELPER
 const openProductModal = (prod = null) => {
   showProductModal.value = true;
   if (prod) {
@@ -234,52 +309,110 @@ const openProductModal = (prod = null) => {
   }
 };
 
-const formatPrice = (value) => {
-  return new Intl.NumberFormat('id-ID').format(value);
-}
+const formatRp = (val) => 'Rp ' + new Intl.NumberFormat('id-ID').format(val);
 
 onMounted(fetchProducts);
 </script>
 
 <style scoped>
-/* Gunakan style dasar yang sama */
-.page-container { padding: 0; }
-.header { display: flex; justify-content: space-between; margin-bottom: 20px; }
-.card { background: white; padding: 1px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+/* =========================================
+   STYLE ALERT & DIALOG
+   ========================================= */
+.alert-floating {
+  position: fixed; top: 30px; left: 50%; transform: translateX(-50%);
+  z-index: 11000;
+  display: flex; align-items: center; gap: 15px;
+  padding: 12px 25px; border-radius: 50px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15); min-width: 320px;
+  animation: slideDown 0.4s ease-out;
+  background: white; font-weight: 600; font-size: 0.95rem; color: #333;
+}
+.alert-content { flex: 1; display: flex; align-items: center; gap: 10px; }
+.alert-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; opacity: 0.6; }
+.alert-success { border: 2px solid #10b981; color: #065f46; background: #ecfdf5; }
+.alert-danger { border: 2px solid #ef4444; color: #991b1b; background: #fef2f2; }
+
+@keyframes slideDown {
+  from { transform: translateX(-50%) translateY(-30px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* DIALOG MODAL */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.5); z-index: 10000;
+  display: flex; justify-content: center; align-items: center;
+  backdrop-filter: blur(2px);
+}
+.modal-content {
+  background: white; padding: 25px; border-radius: 12px; width: 450px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+}
+.dialog-content { text-align: center; width: 350px; } /* Override size for dialog */
+.dialog-content h3 { margin-top: 0; color: #1e293b; margin-bottom: 10px; }
+.dialog-content p { color: #64748b; margin-bottom: 20px; }
+
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.dialog-content .modal-actions { justify-content: center; } /* Center buttons for dialog */
+
+.btn-cancel { padding: 10px 20px; background: #f1f5f9; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; color: #64748b; }
+.btn-save { background: #10b981; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.btn-danger { background: #ef4444; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+
+/* =========================================
+   STYLE HALAMAN ADMIN
+   ========================================= */
+.page-container { padding: 0; font-family: 'Segoe UI', sans-serif; color: #334155; }
+
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+.header h1 { margin: 0; font-size: 1.8rem; color: #1e293b; }
+.subtitle { color: #64748b; margin: 5px 0 0; }
+
+/* CARD & TABLE */
+.card { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
-th { background: #f8f9fa; }
+th, td { padding: 15px 20px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+th { background-color: #f8fafc; font-weight: 600; color: #64748b; font-size: 0.9rem; }
+td { color: #334155; }
 
-/* Status Badge */
-.active { color: green; font-weight: bold; }
-.inactive { color: red; font-weight: bold; }
+.text-right { text-align: right; }
+.text-center { text-align: center; color: #94a3b8; font-style: italic; }
 
-/* Buttons */
-button { cursor: pointer; padding: 6px 12px; border: none; border-radius: 4px; color: white; margin-right: 5px; }
-.btn-add { background: #42b983; font-weight: bold; }
-.btn-recipe { background: #3498db; } /* Biru untuk resep */
-.btn-edit { background: #f39c12; }
-.btn-delete { background: #e74c3c; }
-.btn-save { background: #42b983; }
-.btn-cancel { background: #ccc; color: black; }
+/* Badge Status */
+.badge { padding: 4px 10px; border-radius: 50px; font-size: 0.75rem; font-weight: 600; }
+.badge.green { background: #dcfce7; color: #166534; }
+.badge.red { background: #fee2e2; color: #991b1b; }
+.badge.gray { background: #f1f5f9; color: #475569; }
 
-/* Modal Styles */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
-.modal-content { background: white; padding: 20px; border-radius: 8px; width: 400px; }
-.large-modal { width: 500px; } /* Modal Resep agak lebar */
+/* Tombol */
+.btn-add { background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; }
+.btn-recipe { background: #8b5cf6; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; margin-right: 5px; font-size: 0.85rem; }
+.btn-edit { background: #f59e0b; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; margin-right: 5px; }
+.btn-delete { background: #ef4444; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
 
+/* Form Styles */
 .form-group { margin-bottom: 15px; }
-.form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
-.form-group input, .form-group select { width: 100%; padding: 8px; box-sizing: border-box; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; }
+.form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; color: #475569; }
+.input-std { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 0.95rem; }
+.input-std:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 
-/* Resep Mini Table */
-.recipe-list { background: #f9f9f9; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-.mini-table th, .mini-table td { padding: 5px; font-size: 0.9em; }
-.btn-small-danger { background: #e74c3c; padding: 2px 6px; font-size: 0.8em; }
+/* Modal Resep Khusus */
+.large-modal { width: 550px; }
+.highlight { color: #8b5cf6; font-weight: 800; }
+.modal-subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 20px; margin-top: -10px; }
 
-/* Form Tambah Resep inline */
-.add-recipe-form label { font-size: 0.9em; margin-bottom: 5px; display: block; }
-.add-recipe-form .row { display: flex; gap: 5px; }
-.btn-add-small { background: #27ae60; width: 40px; font-weight: bold; }
+.recipe-list { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0; overflow: hidden; margin-bottom: 20px; }
+.mini-table th { background: #f1f5f9; font-size: 0.85rem; padding: 10px 15px; }
+.mini-table td { padding: 10px 15px; font-size: 0.9rem; border-bottom: 1px solid #e2e8f0; }
+.mini-table tr:last-child td { border-bottom: none; }
+
+.btn-small-danger { background: #ef4444; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+
+hr { border: none; border-top: 1px dashed #cbd5e1; margin: 20px 0; }
+
+.add-recipe-form label { font-size: 0.9rem; font-weight: 700; color: #334155; margin-bottom: 8px; display: block; }
+.row { display: flex; gap: 10px; }
+.flex-2 { flex: 2; }
+.flex-1 { flex: 1; }
+.btn-add-small { background: #10b981; color: white; border: none; width: 45px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold; }
 </style>

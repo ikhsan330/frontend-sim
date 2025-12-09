@@ -3,7 +3,7 @@ import axios from 'axios';
 // 1. Set Base URL Flask Anda
 // Pastikan port 5000 sesuai dengan backend Flask Anda
 const apiClient = axios.create({
-  baseURL: 'http://localhost:5000',
+  baseURL: import.meta.env.VITE_API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },

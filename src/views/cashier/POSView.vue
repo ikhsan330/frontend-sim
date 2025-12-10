@@ -227,7 +227,7 @@
       </div>
     </div>
 
-    <div v-if="showReceiptModal" class="modal-overlay">
+      <div v-if="showReceiptModal" class="modal-overlay">
       <div class="modal-content receipt-modal">
         <div id="printable-area" class="receipt-paper">
           <div class="receipt-header">
@@ -599,7 +599,129 @@ const submitCloseShift = async () => {
 };
 
 const closeReceipt = () => showReceiptModal.value = false;
-const printReceipt = () => window.print();
+const printReceipt = () => {
+  // 1. Ambil konten HTML dari area struk
+  const content = document.getElementById('printable-area').innerHTML;
+
+  // 2. Buat iframe tersembunyi untuk mencetak
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0px';
+  iframe.style.height = '0px';
+  iframe.style.border = 'none';
+  document.body.appendChild(iframe);
+
+  // 3. Tulis konten dengan CSS KHUSUS UKURAN A4
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(`
+    <html>
+      <head>
+        <title>Struk Belanja A4</title>
+        <style>
+          /* 1. Reset Margin Browser & Set Ukuran Kertas A4 */
+          @page {
+            size: A4; /* Ukuran kertas A4 */
+            margin: 20mm; /* Margin standar dokumen 2cm */
+          }
+
+          body {
+            margin: 0;
+            padding: 0;
+            width: 100%; /* Lebar penuh area cetak */
+            font-family: 'Courier New', Courier, monospace; /* Font struk */
+            font-size: 14pt; /* Ukuran font lebih besar untuk A4 */
+            color: #000;
+            background: #fff;
+            line-height: 1.5; /* Spasi antar baris */
+          }
+
+          /* 2. Styling Elemen Agar Rapi di A4 */
+          .receipt-header {
+            text-align: center;
+            margin-bottom: 20px;
+          }
+
+          .receipt-header h3 {
+            font-size: 18pt; /* Judul lebih besar */
+            font-weight: 800;
+            margin: 0 0 10px 0;
+            text-transform: uppercase;
+          }
+
+          .receipt-header p {
+            font-size: 12pt;
+            margin: 0;
+          }
+
+          .receipt-meta {
+            font-size: 12pt;
+            margin: 20px 0;
+            border-bottom: 2px dashed #000; /* Garis pemisah lebih tebal */
+            padding-bottom: 10px;
+          }
+
+          .receipt-meta p {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+          }
+
+          /* Garis Putus-putus Khas Struk */
+          .dashed {
+            border-top: 2px dashed #000;
+            margin: 15px 0;
+            width: 100%;
+          }
+
+          .receipt-total {
+            text-align: right;
+            margin: 20px 0;
+          }
+
+          .receipt-total h1 {
+            font-size: 24pt; /* Total Sangat Besar */
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+          }
+
+          .receipt-total p {
+            font-size: 14pt;
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+          }
+
+          .receipt-footer {
+            text-align: center;
+            font-size: 12pt;
+            margin-top: 30px;
+            font-style: italic;
+          }
+
+          /* Utility */
+          strong { font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        ${content}
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  // 4. Perintah cetak dengan timeout agar CSS ter-render sempurna
+  iframe.contentWindow.focus();
+  setTimeout(() => {
+    iframe.contentWindow.print();
+  }, 500);
+
+  // 5. Hapus iframe setelah selesai
+  setTimeout(() => {
+    document.body.removeChild(iframe);
+  }, 2000);
+};
 </script>
 
 <style scoped>
@@ -701,34 +823,5 @@ const printReceipt = () => window.print();
 .receipt-paper { border: 1px solid #ddd; padding: 20px; background: #fff; font-family: 'Courier New', Courier, monospace; text-align: center; margin-bottom: 20px; max-height: 400px; overflow-y: auto; }
 .dashed { border-top: 1px dashed #000; margin: 10px 0; }
 
-/* === CSS PRINT FINAL (MENGHILANGKAN KOTAK) === */
-@media print {
-  /* 1. Reset Halaman & Sembunyikan Semua */
-  @page { margin: 0; size: auto; }
-  body, html { background-color: white; height: 100%; margin: 0; padding: 0; overflow: hidden; }
-  body * { visibility: hidden; }
 
-  /* 2. Matikan Styling Modal Pembungkus (Ini Kuncinya) */
-  .modal-content {
-    box-shadow: none !important;
-    border: none !important;
-    background: transparent !important;
-    padding: 0 !important; margin: 0 !important;
-    width: 100% !important; position: static !important;
-  }
-
-  /* 3. Tampilkan HANYA Area Struk */
-  #printable-area, #printable-area * { visibility: visible; }
-
-  /* 4. Paksa Struk ke Pojok Atas */
-  #printable-area {
-    position: fixed; left: 0; top: 0; width: 100%;
-    margin: 0; padding: 10px; background-color: white;
-    z-index: 99999;
-  }
-
-  /* 5. Hilangkan Elemen Sampah */
-  .modal-actions, .modal-overlay, .alert-floating, button, .receipt-footer { display: none !important; }
-  hr { border-color: #000; }
-}
 </style>
